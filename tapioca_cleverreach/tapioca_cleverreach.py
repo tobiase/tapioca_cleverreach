@@ -1,35 +1,41 @@
 # coding: utf-8
 import requests
-from django.conf import settings
 from requests_oauthlib import OAuth2
 from tapioca import (
     TapiocaAdapter, JSONAdapterMixin)
 from tapioca.tapioca import TapiocaClient
 
+from .exceptions import CleverreachTokenAcquireException
 from .resource_mapping import RESOURCE_MAPPING
 
 api_root = 'https://rest.cleverreach.com/v2/'
 
 
-def login():
+def acquire_token(client_id, login, password, **kwargs):
     response = requests.post(api_root + 'login.json', {
-        'client_id': settings.CR_CLIENT_ID,
-        'login': settings.CR_LOGIN,
-        'password': settings.CR_PASSWORD,
+        'client_id': client_id,
+        'login': login,
+        'password': password,
     })
 
-    return response.json()
+    if 500 <= response.status_code < 600:
+        raise CleverreachTokenAcquireException(response)
+
+    data = response.json()
+    if 400 <= response.status_code < 500:
+        raise CleverreachTokenAcquireException(response, data)
+
+    return data
 
 
 class CleverreachInstantiator(object):
-    def __init__(self, adapter_class, token):
+
+    def __init__(self, adapter_class):
         self.adapter_class = adapter_class
-        self.token = token
-        print('Initial token: %s' % token)
 
     def __call__(self, serializer_class=None, session=None, **kwargs):
         refresh_token_default = kwargs.pop('refresh_token_by_default', False)
-        kwargs['token'] = self.token
+        kwargs['token'] = acquire_token(**kwargs)
         return TapiocaClient(
             self.adapter_class(serializer_class=serializer_class),
             api_params=kwargs, refresh_token_by_default=refresh_token_default,
@@ -37,8 +43,7 @@ class CleverreachInstantiator(object):
 
 
 def generate_wrapper_from_adapter(adapter_class):
-    token = login()
-    return CleverreachInstantiator(adapter_class, token)
+    return CleverreachInstantiator(adapter_class)
 
 
 class CleverreachClientAdapter(JSONAdapterMixin, TapiocaAdapter):
@@ -63,9 +68,7 @@ class CleverreachClientAdapter(JSONAdapterMixin, TapiocaAdapter):
         return True
 
     def refresh_authentication(self, api_params, *args, **kwargs):
-        api_params['token'] = login()
-        if settings.DEBUG:
-            print('Updated token: %s' % api_params['token'])
+        api_params['token'] = acquire_token(**api_params)
         return api_params
 
     def get_iterator_list(self, response_data):

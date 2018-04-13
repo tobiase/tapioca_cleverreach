@@ -13,7 +13,7 @@ from tapioca_cleverreach import Cleverreach
 
 
 api = Cleverreach(
-	client_id='{your-client-id}', access_token='{any-valid-access-token}')
+	client_id='{your-client-id}', login='{your-login}', password='{your-password}')
 
 ```
 
